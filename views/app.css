@@ -1,0 +1,331 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 PI-Desktop SoL-Pi port contributors
+ * SPDX-License-Identifier: MIT
+ *
+ * The panel styles itself from the two variables the PI-Desktop panel preload
+ * sets on the page, so it follows the app's theme (light or dark) without
+ * guessing at a palette of its own.
+ */
+
+:root {
+  --bg: var(--pi-plugin-panel-page-background, #1c1c1f);
+  --fg: var(--pi-plugin-panel-page-foreground, #e9e9ec);
+  --accent: color-mix(in srgb, #6ea8fe 70%, var(--fg));
+  --line: color-mix(in srgb, var(--fg) 16%, transparent);
+  --soft: color-mix(in srgb, var(--fg) 7%, transparent);
+  --muted: color-mix(in srgb, var(--fg) 62%, transparent);
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px calc(20px + var(--pi-plugin-titlebar-height, 0px));
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.small {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.banner {
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, #e5534b 55%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, #e5534b 14%, transparent);
+  white-space: pre-wrap;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--soft);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.hint code {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.mechanisms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.mechanism {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.mechanism label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  cursor: pointer;
+}
+
+.mechanism input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.mechanism-title {
+  display: block;
+  font-weight: 600;
+}
+
+.mechanism-hint {
+  display: block;
+  color: var(--muted);
+}
+
+.mechanism code {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 6px;
+  max-width: 320px;
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.total {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+}
+
+.total strong {
+  font-size: 16px;
+}
+
+.total span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.plan {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 5px;
+}
+
+.plan li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status-done {
+  color: color-mix(in srgb, #3fb950 75%, var(--fg));
+  border-color: color-mix(in srgb, #3fb950 45%, var(--line));
+}
+
+.status-in_progress {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.status-blocked {
+  color: color-mix(in srgb, #e5534b 75%, var(--fg));
+  border-color: color-mix(in srgb, #e5534b 45%, var(--line));
+}
+
+.boundary {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pre {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.foot {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.foot p {
+  margin: 0;
+}

@@ -1,0 +1,8 @@
+# Nothing this repository produces at build time belongs in it: the plugin is
+# plain JavaScript that PI-Desktop loads as-is.
+node_modules/
+*.log
+.DS_Store
+coverage/
+dist/
+*.tgz

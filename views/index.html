@@ -1,0 +1,133 @@
+<!doctype html>
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2026 PI-Desktop SoL-Pi port contributors
+  SPDX-License-Identifier: MIT
+
+  The SoL-Pi control surface. The same document is the docked work-panel view and
+  the quick-access panel `SoL-Pi: Open` opens, so there is exactly one place where
+  settings are changed and archives are read.
+
+  All data arrives through `window.pluginBridge.invoke` (the PI-Desktop plugin
+  panel preload) and is rendered with DOM APIs — never as HTML — because archive
+  text is arbitrary command output.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SoL-Pi</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <header class="head">
+        <div>
+          <h1>SoL-Pi</h1>
+          <p id="subtitle" class="subtitle">Loading…</p>
+        </div>
+        <div class="head-actions">
+          <span id="version" class="pill"></span>
+          <button id="refresh" type="button" class="ghost" title="Re-read state from the plugin">Refresh</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner" hidden></div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Mechanisms</h2>
+          <div class="head-actions">
+            <button id="preset-local" type="button" class="ghost">Local two on</button>
+            <button id="preset-off" type="button" class="ghost">All off</button>
+          </div>
+        </div>
+        <p class="hint">
+          Everything here is off by default. The reducer is the only mechanism that sends text to a
+          model and can spend quota.
+        </p>
+        <ul id="mechanisms" class="mechanisms"></ul>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Session archives</h2>
+          <label class="select">
+            <span>Session</span>
+            <select id="bucket"></select>
+          </label>
+        </div>
+        <div id="totals" class="totals"></div>
+        <table class="table">
+          <caption>Packed observations</caption>
+          <thead>
+            <tr>
+              <th>Observation</th>
+              <th>Source</th>
+              <th class="num">Bytes</th>
+              <th class="num">Tokens kept out</th>
+              <th>When</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="observations"></tbody>
+        </table>
+        <table class="table">
+          <caption>Reducer decisions</caption>
+          <thead>
+            <tr>
+              <th>Kind</th>
+              <th>Reason</th>
+              <th class="num">Bytes</th>
+              <th>Source digest</th>
+              <th>When</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="receipts"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Plan and boundaries</h2>
+          <span id="plan-meta" class="pill"></span>
+        </div>
+        <p class="hint">
+          PI-Desktop compaction is a user action: this plugin measures and advises, then you run
+          <code>/compact</code> in the chat.
+        </p>
+        <ol id="plan" class="plan"></ol>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Carry-forward brief</h2>
+          <button id="brief-copy" type="button" class="ghost">Copy</button>
+        </div>
+        <pre id="brief" class="pre">No brief yet. Ask the agent to run compact_check once the mechanism is on.</pre>
+      </section>
+
+      <section class="card" id="reader-card" hidden>
+        <div class="card-head">
+          <h2 id="reader-title">Archived object</h2>
+          <div class="head-actions">
+            <button id="reader-prev" type="button" class="ghost">Previous page</button>
+            <button id="reader-next" type="button" class="ghost">Next page</button>
+            <button id="reader-close" type="button" class="ghost">Close</button>
+          </div>
+        </div>
+        <p id="reader-meta" class="hint"></p>
+        <pre id="reader-body" class="pre"></pre>
+      </section>
+
+      <footer class="foot">
+        <p>
+          Archives live under this plugin's own data directory, are addressed by content, and are
+          never deleted automatically. Nothing here reads credentials or sends anything anywhere —
+          except a reduction you ask for explicitly.
+        </p>
+      </footer>
+    </div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
