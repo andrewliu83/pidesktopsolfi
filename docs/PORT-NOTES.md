@@ -19,12 +19,19 @@ offline gate checks that it is.
 The single fact that explains most of the differences below: upstream is a *pi
 coding-agent extension*. It works through lifecycle hooks (`context`,
 `tool_result`, `turn_end`, `session_*`), and two of its mechanisms work by
-**replacing the host's own tools**. A PI-Desktop plugin can do neither — it
-registers *additional* tools, gets no projection hook, and cannot override the
-built-in `edit` / `write` or append entries to the host's session log. So every
-hook-driven trigger becomes an explicit tool or command, and the state that
+**replacing the host's own tools**. The contract this port targets — a PI-Desktop
+*plugin* (`globalThis.pi`, registered tools, a panel, commands) — can do neither: it
+registers *additional* tools, and its own code receives no agent event at all. So
+every hook-driven trigger becomes an explicit tool or command, and the state that
 upstream keeps in session entries is kept in files under the plugin's data
 directory instead.
+
+PI-Desktop *does* have the agent hook surface — it is the one upstream is written
+against, and it is reachable from a plugin only by contributing an ExtensionAPI
+module (`contributes.agentExtensions` plus the `agent.extension` permission, i.e.
+code running inside the agent process). This port does not do that, and
+"The hook surface, precisely" below states exactly what each route can and cannot
+reach, so the choice can be judged rather than assumed.
 
 ## Where each upstream file went
 
@@ -96,7 +103,7 @@ name.
 
 | Change | Why |
 |---|---|
-| Packing is an explicit `obs_pack` tool (`action: "pack" \| "scan" \| "list"`), not a projection hook | PI-Desktop gives a plugin no context hook, so there is no place to install the automatic replacement. `scan` is the stand-in: it reads the live conversation through `session.getLlmContext()`, counts how many assistant messages follow each large tool result (upstream's replay count), and returns the eligible ones *with* their placeholders for the agent to apply. `pack` packs text the agent is holding. |
+| Packing is an explicit `obs_pack` tool (`action: "pack" \| "scan" \| "list"`), not a projection hook | The plugin route has no `context` hook, so there is no place to install the automatic replacement — the agent-extension route does have one, and this port does not ship it ("The hook surface, precisely"). `scan` is the stand-in: it reads the live conversation through `session.getLlmContext()`, counts how many assistant messages follow each large tool result (upstream's replay count), and returns the eligible ones *with* their placeholders for the agent to apply. `pack` packs text the agent is holding. |
 | A scan never packs its own fused-call results; it reports how many it left alone (`fused_results_kept`) | A `fused_edit` result carries the `[then_run:…]` verdict the agent has to read. Upstream never faces this because the projection runs after the call has been read; a scan runs against a live conversation where that result is still actionable. The verdict marker sits on line 3, ahead of the output, so it survives the host's projection; the tool name is checked as well, because that identifies a fused call even when a scan sees only the head of a result. |
 | The scan's effective threshold is `min(requested, 8000)` and it reports `source_may_be_truncated` / `source_visible_chars` for every candidate | PI-Desktop projects at most 8000 characters of a tool result to a plugin, so a scan that insisted on 10 KiB could never find anything. Archives made from a truncated view say so in their own placeholder, and the "Nothing to pack" text names the upstream threshold and points at `obs_pack action "pack"`. |
 | `obs_pack` and `obs_recall` stay usable while the mechanism is off | The rest of the mechanism (automatic packing) is what the setting gates. Refusing recall too would strand bytes that are already on disk and could not be read any other way. |
@@ -126,7 +133,7 @@ agent sees — readback and authority — are upstream's words, and the gate pin
 
 | Change | Why |
 |---|---|
-| An explicit `reduce_evidence` tool that requires `command`, with exactly one source (`text`, `path` or `observation_id`) | Upstream's trigger is a hook a plugin cannot install. Because the reducer only ever ran for a diagnostic command, the port states that requirement in the tool itself: a non-diagnostic command is refused before anything is archived or sent to a model, and passing two sources is refused as ambiguous rather than guessed at. |
+| An explicit `reduce_evidence` tool that requires `command`, with exactly one source (`text`, `path` or `observation_id`) | Upstream's trigger is a `tool_result` hook this route cannot install (see "The hook surface, precisely"). Because the reducer only ever ran for a diagnostic command, the port states that requirement in the tool itself: a non-diagnostic command is refused before anything is archived or sent to a model, and passing two sources is refused as ambiguous rather than guessed at. |
 | The default provider is `openai-codex` (`DEFAULT_REDUCER_PROVIDER`, upstream's `["openai", "codex"].join("-")`), default model `gpt-5.6-luna` | Faithful to upstream, and surfaced as settings. PI-Desktop maps the `openai-codex` alias onto its own provider; if the alias is not available on the machine, the refusal names the setting to repoint instead of silently substituting a provider. |
 | The receipt records the reducer model and provider that actually answered | Upstream records them too; here they come from `agent.complete`, so the receipt names what PI-Desktop resolved rather than what was requested. |
 
@@ -156,7 +163,7 @@ is upstream's.
 
 | Change | Why |
 |---|---|
-| The tool is named `plan_update`, and `compact_check` exposes the verdict | Upstream's plan tool is `update_plan`; the port's name keeps the mechanism prefix in the plugin's own namespace, and `compact_check` exists because a plugin cannot hook `turn_end` — the agent asks for the measurement instead. |
+| The tool is named `plan_update`, and `compact_check` exposes the verdict | Upstream's plan tool is `update_plan`; the port's name keeps the mechanism prefix in the plugin's own namespace, and `compact_check` exists because this route cannot hook `turn_end` (the agent-extension route can — see "The hook surface, precisely") — the agent asks for the measurement instead. |
 | `compact_check` reports the verdict, writes the carry-forward brief, and tells the user to run `/compact`; it never compacts | PI-Desktop's native compaction is a user action only (a plugin cannot start it, and `/compact` is not callable from a plugin). The plugin therefore says plainly what the economics decided and hands the decision over, instead of pretending it compacted. |
 | The plugin never emits `native_not_compactable` | Upstream downgrades a positive decision with that code when *its host's* native compaction is not feasible for the branch (`nativeCompactionFeasible(context.sessionManager.getBranch(), …)`). A plugin cannot inspect the host's branch or its compactor's feasibility, so that code is unreachable here; whether PI-Desktop can compact is stated to the user rather than guessed at. |
 | Plan and economics state live in `plan.json` (+ `compaction-brief.md`) under the plugin data directory, keyed by session bucket | Upstream appends its state to the session entries (`appendOnlineState`) and restores it from them (`restoreOnlineState`). A plugin cannot append to the host's session log, so the same per-session state is rebuilt in files. |
@@ -191,11 +198,71 @@ sent to a model. The only commands the plugin runs are the ones the agent passes
 
 | Upstream | Why |
 |---|---|
-| The hook surface itself (`context`, `tool_result`, `turn_end`, `session_start`, `session_before_tree`, `session_tree`, `before_provider_request`, `input`, `agent_settled`, `session_compact`, `session_shutdown`) | PI-Desktop's plugin contract exposes none of them. Each one is either replaced by an explicit tool (`obs_pack scan`, `compact_check`) or dropped with the behaviour it triggered. |
-| Overriding the host's `edit` / `write` | Not possible from a plugin; see Action Fusion above. |
+| The hook surface itself (`context`, `tool_result`, `turn_end`, `session_start`, `session_before_tree`, `session_tree`, `before_provider_request`, `input`, `agent_settled`, `session_compact`, `session_shutdown`) | Not reachable from the plugin code this port ships: a plugin's own process API has no agent event. It *is* reachable by contributing an ExtensionAPI module (`agent.extension`), which this port deliberately does not do — see "The hook surface, precisely". Each hook is replaced by an explicit tool (`obs_pack scan`, `compact_check`) or dropped with the behaviour it triggered. |
+| Overriding the host's `edit` / `write` | Refused on *both* routes, and by name: a plugin cannot replace a host tool, and the agent-side extension loader rejects a reserved tool name with `rejected_registration: tool name "edit" is already taken`. See Action Fusion above. |
 | Running native compaction, and `nativeCompactionFeasible` | Not possible from a plugin; see Online Context Compact above. |
 | Appending/restoring state through session entries | Not exposed to plugins; state is kept in files. |
 | TUI rendering (`renderSolPiTool`, `showSolPiSavings`, the status line) | Replaced by the work panel and by the result text. |
+
+
+## The hook surface, precisely
+
+The wording matters here, because the two routes differ and only one of them is used.
+
+**A plugin's own code gets no agent hook.** `globalThis.pi` is built by `buildApi()` in
+`out/main/plugin-host-process.js`, and its only event surface is `events.on` / `events.off`.
+Four places in the host post an event frame to a plugin process, and between them they
+carry seven names: `plugin:settingsChanged` (after `setSettings`), `bus.message`,
+`net:websocket:<type>`, `session:modelChanged`, `session:turnEnded`, `appearance:changed`,
+`workspace:changed`. None of them carries a tool result or a provider request;
+`session:turnEnded` carries only `{ sessionId, turnId, reason }`. `session.getLlmContext`,
+and `agent.complete` with `includeSessionContext`, read the session id from the plugin's
+*in-flight tool call* (`readSessionContext`) and refuse otherwise:
+`INVALID_ARGUMENT: session context is only available during tool execution`.
+
+**The agent hook surface exists one layer down.** The agent runs in a sidecar that embeds
+the same extension runtime `pi` uses, and a manifest can contribute ExtensionAPI modules:
+
+```json
+"contributes": { "agentExtensions": ["src/hook.js"] },
+"permissions": ["agent.extension"]
+```
+
+Up to 8 entries per plugin, `.ts`/`.mts`/`.js`/`.mjs`, resolved inside the plugin root;
+`PluginRuntime.registerAgentExtensions` records them and *"the modules are loaded by the
+agent sidecar at the next turn"*. The host passes them per project
+(`trustedExtensions: plugins.getAgentExtensions().filter(pluginActiveInProject…),
+source: "plugin"`), and the sidecar loads them into the same runner that emits the
+lifecycle events. That runner's own table (in the sidecar bundle) classifies every event
+a handler may ask for:
+
+| Class | Events |
+|---|---|
+| `result` — the return value changes what happens | `before_agent_start`, `context`, `before_provider_request`, `tool_call`, `tool_result`, `session_before_compact` |
+| `mutation` | `before_provider_headers` |
+| `notification` — informational only | `session_start`, `session_shutdown`, `session_info_changed`, `after_provider_response`, `agent_start`, `agent_end`, `agent_settled`, `turn_start`, `turn_end`, `message_start`, `message_update`, `message_end`, `tool_execution_start`, `tool_execution_update`, `tool_execution_end`, `session_compact`, `session_compact_failed` |
+| `deferred` — **recognised but never emitted by PI-Desktop**; subscribing reports `unsupported_api: event "<name>" is not emitted by Desktop` | `project_trust`, `resources_discover`, `model_select`, `thinking_level_select`, `session_before_fork`, `input`, `user_bash`, `session_before_switch`, `session_before_tree`, `session_tree`, `ui_prompt_start`, `ui_prompt_end` |
+
+| Upstream hook | Status | What it would give the port |
+|---|---|---|
+| `context` (ObservationPack's projection layer) | emitted, `result` | automatic replacement of already-replayed results — what `obs_pack scan` stands in for |
+| `tool_result` (the reducer's trigger) | emitted, `result` | automatic candidate detection instead of an explicit `reduce_evidence` call |
+| `before_provider_request`, `turn_end`, `agent_settled`, `session_compact`, `session_start`, `session_shutdown` (OCC) | emitted (`turn_end` · `agent_settled` · `session_compact` · `session_*` as notifications) | measuring the economics at every turn end instead of when `compact_check` is called |
+| `input`, `session_before_tree`, `session_tree` (OCC's prompt rewrite and tree guard) | **deferred: never emitted** | nothing — unavailable on either route |
+| `pi.registerTool({ name: "edit"｜"write", … })` (Action Fusion) | refused: `rejected_registration: tool name "edit" is already taken` (reserved names are the session's tool catalog) | nothing — the fused parameter can only ever live on a *separate* tool |
+
+**Why this port ships only the plugin route.** Contributing an agent extension means
+asking for `agent.extension` — the host's own description: *"Runs ExtensionAPI modules
+inside the agent process with the same access as the agent's own tools. Enable only code
+you trust."* Everything here is otherwise a tool call the user can read in the transcript,
+with no code inside the agent process and all four mechanisms off by default; trading that
+for automaticity is a posture change, not a bug fix, so it is the user's decision rather
+than a default. The cost of the choice is visible in the table above: `obs_pack scan` and
+`compact_check` exist *because* this route has no hook.
+
+All of it is checkable on a local install: `buildApi()` in
+`app.asar/out/main/plugin-host-process.js`, the four event-frame sites and `Lq` in the
+app and sidecar bundles, and `registerAgentExtensions` in `PluginRuntime`.
 
 ## What proves what
 

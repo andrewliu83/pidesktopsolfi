@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.2 — the hook claim, stated exactly
+
+`docs/PORT-NOTES.md` said PI-Desktop exposes none of upstream's hooks. That was wrong as
+written, and the deep check that replaced it is now in the repository:
+
+- **What is true:** a plugin's *own* code receives no agent event. Its API
+  (`buildApi()` in `out/main/plugin-host-process.js`) carries exactly seven event names,
+  none of them a tool result or a provider request, and `session.getLlmContext` reads its
+  session id from the plugin's *in-flight tool call* — refusing otherwise with
+  `INVALID_ARGUMENT: session context is only available during tool execution`.
+- **What was missing:** PI-Desktop embeds the same extension runtime upstream is written
+  against. A manifest can contribute ExtensionAPI modules with
+  `contributes.agentExtensions` plus the `agent.extension` permission, the host hands them
+  to the agent sidecar per project, and that runner's event table classifies `context`,
+  `tool_result`, `before_provider_request` and `tool_call` as `result` hooks — they exist,
+  and they fire.
+- **New section** `docs/PORT-NOTES.md` → "The hook surface, precisely": the plugin-route
+  event catalog, the extension event table by class (`result` / `mutation` /
+  `notification` / `deferred`), upstream hook by upstream hook, the events PI-Desktop
+  recognises but never emits (`input`, `session_before_tree`, `session_tree`, …), and the
+  loader's refusal of a reserved tool name — `tool name "edit" is already taken`. That last
+  one is why the fused parameter can only ever live on a *separate* tool, on either route.
+- **The posture is pinned:** tests now assert that no `agent.extension` is requested and
+  that `contributes.agentExtensions` stays empty. Shipping hook code remains the user's
+  decision rather than a default, because it means running code inside the agent process
+  with the agent's own access.
+
+No tool behaviour changed in this release. The documentation ships inside the package
+(`README.md`, `CHANGELOG.md`, `docs/PORT-NOTES.md`), so the version moved with it.
+
 ## 0.1.1 — the session's own project folder answers too
 
 `workspace.get()` is the *window's* project, and it is `null` whenever the window has

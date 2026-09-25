@@ -60,9 +60,9 @@ bash scripts/verify.sh                              # optional: prove it first
 
 Then ask the agent to run `PluginPack` on this directory (or run
 `pnpm pi-plugin pack .`), which writes
-`dist/local.sol-pi-<version>.piplug` (version comes from `lib/metadata.js`, so the
-file is named after the release it holds — `0.1.1` today). Install that file from the
-asks you to grant `agent.tool.register` and `agent.prompt.inject` on the way in.
+`dist/local.sol-pi-<version>.piplug` — the version comes from `lib/metadata.js`, so the
+file is named after the release it holds. Install that file from the Plugins page; the
+app asks you to grant `agent.tool.register` and `agent.prompt.inject` on the way in.
 
 Copying this folder into `~/.pi-desktop/plugins/installed/` by hand is **not** one
 of those routes: the app keeps its own registry of installed plugins, so a dropped
@@ -277,11 +277,17 @@ reports two warnings, both expected:
 
 ## Honest limitations
 
-- **No context hook.** PI-Desktop gives a plugin no way to rewrite the message
-  projection, so nothing is replaced behind your back: `obs_pack` and
-  `reduce_evidence` are called by the agent (or by the scan) and hand back the
-  text to use. The archive format, the id derivation and the paging contract are
-  unchanged, which is what makes an archived result still readable the same way.
+- **No context hook — on the route this plugin takes.** A plugin's own code receives no
+  agent event at all (its API carries exactly seven, none of them a tool result or a
+  provider request), so nothing is replaced behind your back: `obs_pack` and
+  `reduce_evidence` are called by the agent (or by the scan) and hand back the text to
+  use. PI-Desktop *does* expose the upstream hook surface — to ExtensionAPI modules
+  contributed through `contributes.agentExtensions` with the `agent.extension`
+  permission, i.e. code running inside the agent process, which this plugin deliberately
+  does not ship. `docs/PORT-NOTES.md` → "The hook surface, precisely" lists the events
+  one by one, including the ones PI-Desktop recognises but never emits. The archive
+  format, the id derivation and the paging contract are unchanged either way, which is
+  what makes an archived result still readable the same way.
 - **`scan` sees what a plugin can see.** The host hands a plugin at most 8000
   characters of one tool result, so a scan uses that as its floor and says so in
   its output; a result you still hold in full can be packed directly with

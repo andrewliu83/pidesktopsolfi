@@ -57,6 +57,16 @@ test("the permission set is pinned, and it is the narrow one", () => {
   for (const forbidden of ["net.fetch", "fs.read", "fs.write", "fs.delete", "desktop.control", "browser.cdp"]) {
     assert.equal(manifest.permissions.includes(forbidden), false, `${forbidden} must not be requested`);
   }
+  assert.equal(
+    manifest.permissions.includes("agent.extension"),
+    false,
+    "no code runs inside the agent process: the hook route is deliberately not taken",
+  );
+  assert.deepEqual(
+    manifest.contributes?.agentExtensions ?? [],
+    [],
+    "contributes.agentExtensions stays empty — see PORT-NOTES, 'The hook surface, precisely'",
+  );
 });
 
 test("all four mechanisms are exposed, off by default, under the upstream keys", () => {
