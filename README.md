@@ -46,14 +46,29 @@ Context Compact（计划边界 + 压缩经济学）。
 
 ## Install
 
-Copy this directory into PI-Desktop's plugin folder under its id, then restart the
-app:
+Both supported routes go through the app's **Plugins** page:
+
+**Develop from this folder.** Plugins page → *Load development plugin* → point at
+this directory. The app loads it, watches it, and reloads it whenever a file is
+saved here — that is the fastest way to try a change.
+
+**Install it the way a user would.** Package it, then install the package:
 
 ```bash
-cp -R . ~/.pi-desktop/plugins/installed/local.sol-pi
+bash scripts/verify.sh                              # optional: prove it first
 ```
 
-The folder must keep its shape: `manifest.json` and `main.js` at the top level.
+Then ask the agent to run `PluginPack` on this directory (or run
+`pnpm pi-plugin pack .`), which writes
+`dist/local.sol-pi-0.1.0.piplug`. Install that file from the Plugins page; the app
+asks you to grant `agent.tool.register` and `agent.prompt.inject` on the way in.
+
+Copying this folder into `~/.pi-desktop/plugins/installed/` by hand is **not** one
+of those routes: the app keeps its own registry of installed plugins, so a dropped
+folder is invisible to it. Use one of the two above.
+
+The folder must keep its shape either way: `manifest.json` and `main.js` at the
+top level.
 
 Then open the panel (`SoL-Pi: Open panel`) or run one of the commands below, and
 turn on the mechanisms you want. The conservative preset —
