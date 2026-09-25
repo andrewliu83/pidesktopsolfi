@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "local.sol-pi",
   "name": "SoL-Pi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "NVIDIA SoL-Pi's four agent-efficiency mechanisms ported to PI-Desktop: fused edit+run tool calls, observation packing with exact paged recall, evidence-verified log reduction, and economics-checked context compaction planning. Every mechanism is opt-in and off by default.",
   "i18n": {
     "zh-CN": {
@@ -18,7 +18,7 @@
     "developer-tools",
     "community"
   ],
-  "changelog": "0.1.0: first PI-Desktop port of NVlabs/SoL-Pi. Six agent tools covering the four upstream mechanisms — fused_edit (Action Fusion), obs_pack/obs_recall (ObservationPack), reduce_evidence (Evidence-Preserving Reducer) and plan_update/compact_check (Online Context Compact) — plus five skills, a work-panel view, and an offline verification gate. Upstream defaults are preserved: all four mechanisms ship disabled.",
+  "changelog": "0.1.1: path-based tools now resolve the project folder the way the host does. When the window has no project open but the session records one, the session's projectPath is used, so fused_edit, obs_pack path and reduce_evidence path work instead of refusing; a lookup that fails is disclosed in the refusal rather than hidden. Also: obs_pack scan no longer packs its own fused-call results. 0.1.0: first PI-Desktop port of NVlabs/SoL-Pi. Six agent tools covering the four upstream mechanisms — fused_edit (Action Fusion), obs_pack/obs_recall (ObservationPack), reduce_evidence (Evidence-Preserving Reducer) and plan_update/compact_check (Online Context Compact) — plus five skills, a work-panel view, and an offline verification gate. Upstream defaults are preserved: all four mechanisms ship disabled.",
   "safetyNotes": "Registers agent tools and prompt skills, and declares exactly the host APIs it uses. The fused-edit tool writes one project file and runs one shell command the agent itself supplied, inside the project root only: paths are resolved and confined to the workspace root (symlink escapes refused), and .env*, .ssh/, .aws/, *.pem and .git/ are refused. Command output is bounded (200 KiB per stream) and the whole call is capped below the host's 110s tool limit. Observation and reducer archives are written to the plugin's own data directory inside the app's plugin data root, are content-addressed, and are never deleted automatically or sent anywhere. The evidence-preserving reducer is the only mechanism that can spend quota or send data outward: it calls the host's one-shot completion with the configured reducer model and the log as prompt input, and it is off until enabled. session.read is used during tool execution only, to measure the live model context for packing candidates and compaction economics; nothing read there is transmitted except the log the reducer call is explicitly given. The clipboard is written only when you press Copy in the panel, and the plugin reads it never. No credentials are read, no network request is made directly, and no telemetry exists.",
   "main": "main.js",
   "contributes": {

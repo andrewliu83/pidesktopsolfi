@@ -119,6 +119,7 @@ function createHostStub(options = {}) {
   const workspace = denyNamespace("workspace", {
     get: async () => {
       record("workspace.get");
+      if (state.workspaceInfo !== undefined) return state.workspaceInfo;
       return {
         path: projectRoot,
         name: projectRoot.split("/").filter(Boolean).at(-1),
@@ -209,6 +210,24 @@ function createHostStub(options = {}) {
   });
 
   const session = denyNamespace("session", {
+    /**
+     * The one session lookup this plugin makes: which project folder a session
+     * belongs to. `state.sessionRecord` overrides it - `null` means the session
+     * records no project path, an `Error` means the lookup itself failed.
+     */
+    get: async (input) => {
+      record("session.get", { id: input?.id });
+      if (state.sessionRecord instanceof Error) throw state.sessionRecord;
+      const id = typeof input?.id === "string" ? input.id.trim() : "";
+      // A lookup without an id cannot name a session, so it cannot name that
+      // session's project either - the host answers "no such session", not the
+      // current folder. A plugin that forgets the id therefore fails here instead
+      // of quietly resolving to whatever project happens to be open.
+      if (!id) return { session: null };
+      if (state.sessionRecord === null) return { session: { id, projectPath: null } };
+      if (state.sessionRecord !== undefined) return state.sessionRecord;
+      return { session: { id, projectPath: projectRoot, title: "stub session" } };
+    },
     getLlmContext: async () => {
       record("session.getLlmContext");
       if (!state.inFlight) {

@@ -71,6 +71,12 @@ mutations=(
   'if (fusedThenRunResult(content, message.toolName)) {'
   'if (fusedThenRunResult("", "")) {'
   'FAIL scan leaves its own fused-call results alone'
+
+  "the session fallback is disarmed"
+  "lib/host.js"
+  'host.session.get({ id: sessionId })'
+  'host.session.get({ id: "" })'
+  "FAIL the session's own project folder answers when the window has none"
 )
 
 failures=0

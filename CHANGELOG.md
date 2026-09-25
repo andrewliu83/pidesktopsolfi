@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.1 — the session's own project folder answers too
+
+`workspace.get()` is the *window's* project, and it is `null` whenever the window has
+none open — an ordinary state in PI-Desktop, not an error. Every path-based tool
+therefore resolved no project root and refused, even inside a chat that has a folder of
+its own.
+
+- `workspace.get()` is accepted in both shapes the host uses: the bare
+  `{ path, name, roots }` and a `{ workspace: { … } }` envelope.
+- When it answers `null`, the project the **session** records is used instead —
+  `session.get({ id }).session.projectPath`, the same source the host reads to scope a
+  session's file access. `fused_edit`, `obs_pack action "path"` and
+  `reduce_evidence path` now work with no project open in the window.
+- The refusal happens only when neither source has a folder, and it says which two were
+  tried: *"No project is open, so there is no project root to work in."* followed by
+  *"This session does not record a project folder either."*, *"Session lookup failed
+  too: …"* (a failed lookup is disclosed, never treated as "no folder"), or *"No session
+  was available to ask."*
+
+Three gate checks and one mutation (`session.get({ id: sessionId })` → `session.get({ id:
+"" })`) hold this in place, so the fallback cannot be dropped without the gate failing:
+54 checks and 8 mutations in total. The panel is unchanged — it lists what the tools
+actually wrote, so it stays empty until something is packed.
+
 ## 0.1.0 — first PI-Desktop port
 
 Ported from [NVlabs/SoL-Pi](https://github.com/NVlabs/SoL-Pi) `sol-pi` 0.1.0 (MIT).

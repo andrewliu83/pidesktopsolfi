@@ -239,8 +239,8 @@ What that proves, and how:
 | Syntax | All 18 source files parse |
 | Manifest freshness | `manifest.json` is byte-identical to what `lib/metadata.js` generates; the plugin also re-checks this at load time and refuses to load on drift |
 | Unit tests | 60 `node:test` assertions over config resolution, the observation store and paging, receipt validation, the economics decisions, plan parsing, and path containment |
-| Offline gate | 51 checks that load the plugin against a **strict stub of the real host API** (an invented API throws), then exercise every tool, every refusal, the panel channels, the commands, and unload |
-| Mutation gate | Breaks one guarantee at a time (opt-in removed, manifest drift, a byte dropped from an archive, receipt verification skipped, an invented host API, the credential guard weakened, the fused-result guard disarmed) and requires the gate to fail **by name**: 7/7 caught |
+| Offline gate | 54 checks that load the plugin against a **strict stub of the real host API** (an invented API throws), then exercise every tool, every refusal, the panel channels, the commands, and unload |
+| Mutation gate | Breaks one guarantee at a time (opt-in removed, manifest drift, a byte dropped from an archive, receipt verification skipped, an invented host API, the credential guard weakened, the fused-result guard disarmed, the session-project fallback disarmed) and requires the gate to fail **by name**: 8/8 caught |
 
 The gate is deliberately adversarial about this plugin's own claims: it asserts
 that a disabled mechanism refuses, that a refused call changes nothing on disk, a

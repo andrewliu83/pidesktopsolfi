@@ -92,6 +92,7 @@ const DOCUMENTED_API = new Set([
   "agent.complete",
   "models.list",
   "session.getLlmContext",
+  "session.get",
   "commands.register",
   "commands.unregister",
   "ui.openPanel",
@@ -351,6 +352,79 @@ async function main() {
     return seen.join(", ");
   });
 
+
+  await check("the session's own project folder answers when the window has none", async () => {
+    // PI-Desktop keeps one project per session (ADR 0016/D093), so a conversation
+    // can run in a folder the window never opened: workspace.get() is empty while
+    // the session still knows its folder. The host reads
+    // session.get(...).session.projectPath itself to scope file access per session.
+    stub.state.workspaceInfo = null;
+    stub.state.sessionRecord = undefined;
+    try {
+      const outcome = await stub.invokeTool("fused_edit", {
+        action: "write",
+        path: "session-root.txt",
+        content: "written through the session's project folder\n",
+      });
+      expect(outcome.ok === true, "the write must succeed");
+      const written = join(projectRoot, "session-root.txt");
+      expect(existsSync(written), "the file must land in the session's folder");
+      expect(
+        stub.state.calls.some((call) => call.api === "session.get"),
+        "the session lookup must be attempted",
+      );
+      return readFileSync(written, "utf8").trim();
+    } finally {
+      stub.state.workspaceInfo = undefined;
+      stub.state.sessionRecord = undefined;
+      rmSync(join(projectRoot, "session-root.txt"), { force: true });
+    }
+  });
+
+  await check("a conversation with no project anywhere is refused by name", async () => {
+    stub.state.workspaceInfo = null;
+    stub.state.sessionRecord = null;
+    try {
+      const message = await expectRefusal(() =>
+        stub.invokeTool("fused_edit", { action: "write", path: "nowhere.txt", content: "x" }),
+      );
+      expect(/no project is open/i.test(message), `refusal must name the missing project: ${message}`);
+      expect(/session/i.test(message), `refusal must say the session was asked too: ${message}`);
+      expect(!existsSync(join(projectRoot, "nowhere.txt")), "nothing may be written");
+      return "refused without writing";
+    } finally {
+      stub.state.workspaceInfo = undefined;
+      stub.state.sessionRecord = undefined;
+    }
+  });
+
+  await check("a wrapped workspace answer and a failed session lookup are both handled", async () => {
+    stub.state.workspaceInfo = { workspace: { path: projectRoot, name: "project" } };
+    try {
+      const outcome = await stub.invokeTool("fused_edit", {
+        action: "write",
+        path: "wrapped.txt",
+        content: "resolved from the wrapped payload\n",
+      });
+      expect(outcome.ok === true, "the { workspace: { path } } shape must resolve");
+      rmSync(join(projectRoot, "wrapped.txt"), { force: true });
+
+      stub.state.workspaceInfo = null;
+      stub.state.sessionRecord = new Error("permission denied");
+      const message = await expectRefusal(() =>
+        stub.invokeTool("fused_edit", { action: "write", path: "denied.txt", content: "x" }),
+      );
+      expect(
+        message.includes("Session lookup failed too: permission denied"),
+        `refusal must disclose the failed lookup instead of hiding it: ${message}`,
+      );
+      return "wrapped shape accepted, failed lookup disclosed";
+    } finally {
+      stub.state.workspaceInfo = undefined;
+      stub.state.sessionRecord = undefined;
+      rmSync(join(projectRoot, "wrapped.txt"), { force: true });
+    }
+  });
   await check("an oversized command output is capped, and says so", async () => {
     const outcome = await stub.invokeTool("fused_edit", {
       action: "write",
