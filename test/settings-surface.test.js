@@ -39,6 +39,7 @@ test("the permission set is pinned, and it is the narrow one", () => {
     [...manifest.permissions].sort(),
     [
       "agent.complete",
+      "agent.extension",
       "agent.prompt.inject",
       "agent.tool.register",
       "clipboard.write",
@@ -59,25 +60,42 @@ test("the permission set is pinned, and it is the narrow one", () => {
   }
   assert.equal(
     manifest.permissions.includes("agent.extension"),
-    false,
-    "no code runs inside the agent process: the hook route is deliberately not taken",
+    true,
+    "the hook route needs it: contributes.agentExtensions declares a module that runs in the agent process",
   );
   assert.deepEqual(
     manifest.contributes?.agentExtensions ?? [],
-    [],
-    "contributes.agentExtensions stays empty — see PORT-NOTES, 'The hook surface, precisely'",
+    ["hooks/agent-hooks.js"],
+    "exactly one contributed module — see PORT-NOTES, 'The hook route as built'",
   );
+  for (const relative of manifest.contributes.agentExtensions) {
+    const path = join(root, relative);
+    assert.ok(existsSync(path), `${relative} is declared but missing`);
+    const factory = require(path);
+    assert.equal(typeof factory, "function", `${relative} must export the factory the runtime calls`);
+    assert.equal(factory.default, factory, "the default export must be that same function");
+    assert.equal(factory.ROUTE, "agent-extension");
+    assert.equal(typeof factory.projectMessages, "function", "the projection must be reachable for the gate");
+  }
 });
 
-test("all four mechanisms are exposed, off by default, under the upstream keys", () => {
+test("the mechanisms are exposed under the upstream keys, and only the free ones ship on", () => {
   const settings = new Map(manifest.contributes.settings.map((setting) => [setting.key, setting]));
+  // Packing removes a replay the model has already paid for; it adds nothing. It is
+  // the one mechanism the port ships enabled, and this assertion is where that
+  // decision has to be re-made if anyone changes it.
+  const shippedOn = ["observationPack"];
   for (const key of ["actionFusion", "observationPack", "evidencePreservingReducer", "onlineContextCompact"]) {
     const setting = settings.get(key);
     assert.ok(setting, `${key} must be a setting the user can turn on`);
     assert.equal(setting.type, "boolean");
-    assert.equal(setting.default, false, `${key} must ship off`);
+    assert.equal(setting.default, shippedOn.includes(key), `${key} does not match the shipped posture`);
     assert.ok(setting.title.trim().length > 10, `${key} needs a title that says what it does`);
   }
+  const measurement = settings.get("turnMeasurement");
+  assert.ok(measurement, "the per-turn measurement must be a setting the user can switch off");
+  assert.equal(measurement.type, "boolean");
+  assert.equal(measurement.default, true, "it ships on: it injects nothing and spends nothing");
   assert.equal(settings.get("cacheWriteReadRatio").default, 12.5);
   assert.equal(settings.get("keepRecentTokens").default, 20000);
   assert.equal(settings.get("evidencePreservingReducerProvider").default, "openai-codex");

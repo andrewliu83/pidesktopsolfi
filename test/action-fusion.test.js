@@ -245,7 +245,14 @@ test("the fused call keeps the mutation when the command fails, and reports both
     thenRun: { command: 'node -e "process.stdout.write(String(6*7))"' },
     cwd: root,
   });
-  assert.equal(succeeded.status, "succeeded");
+  // The status is asserted with its own evidence: this call spawns a process, and
+  // a bare status mismatch says nothing about whether it timed out, could not
+  // start, or exited non-zero.
+  assert.equal(
+    succeeded.status,
+    "succeeded",
+    `unexpected status with exit ${succeeded.exitCode}, notes ${JSON.stringify(succeeded.notes)}, output ${JSON.stringify(succeeded.output)}`,
+  );
   assert.equal(succeeded.exitCode, 0);
   assert.equal(succeeded.output, "42");
   assert.deepEqual(succeeded.notes, []);

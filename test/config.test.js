@@ -17,11 +17,20 @@ const ALL_OFF = {
   onlineContextCompact: false,
 };
 
-test("every mechanism is off in the shipped defaults", () => {
+// The two switches that ship on can only act on text the model has already been
+// shown: packing removes a replay, measurement records a cost. They inject nothing
+// and spend nothing, which is exactly why they are the ones enabled by default.
+const SHIPPED_ON = ["observationPack"];
+
+test("exactly the switches that cost nothing are on in the shipped defaults", () => {
   const defaults = config.defaultConfig();
-  for (const [key, value] of Object.entries(ALL_OFF)) {
-    assert.equal(defaults[key], value, `${key} must default to off`);
+  for (const key of config.FEATURE_KEYS) {
+    assert.equal(defaults[key], SHIPPED_ON.includes(key), `${key} does not match the shipped posture`);
   }
+  assert.equal(defaults.turnMeasurement, true, "the per-turn measurement ships on");
+  assert.equal(defaults.actionFusion, false, "the write-and-run tool stays opt-in");
+  assert.equal(defaults.evidencePreservingReducer, false, "the mechanism that spends quota stays off");
+  assert.equal(defaults.onlineContextCompact, false, "the mechanism that injects a plan stays off");
   assert.equal(defaults.cacheWriteReadRatio, 12.5);
   assert.equal(defaults.keepRecentTokens, 20000);
   assert.equal(defaults.evidencePreservingReducerProvider, "openai-codex");
@@ -32,8 +41,14 @@ test("resolveConfig accepts nothing, an empty object and the upstream key names"
   for (const stored of [undefined, null, {}]) {
     const resolved = config.resolveConfig(stored);
     assert.equal(resolved.ok, true);
-    assert.deepEqual(config.enabledMechanisms(resolved.config), []);
+    // Nothing stored means the shipped posture, not "everything off": packing is
+    // the one mechanism that is on until the user says otherwise.
+    assert.deepEqual(config.enabledMechanisms(resolved.config), ["observationPack"]);
+    assert.equal(resolved.config.turnMeasurement, true);
   }
+  const off = config.resolveConfig({ observationPack: false });
+  assert.equal(off.ok, true);
+  assert.deepEqual(config.enabledMechanisms(off.config), []);
   const on = config.resolveConfig({ actionFusion: true, observationPack: true });
   assert.equal(on.ok, true);
   assert.deepEqual(config.enabledMechanisms(on.config).sort(), ["actionFusion", "observationPack"]);
@@ -66,7 +81,7 @@ test("resolveConfig names the offending setting instead of guessing at it", () =
 
 test("requireMechanism refuses with the documented code and names the setting", () => {
   const off = config.defaultConfig();
-  for (const key of config.FEATURE_KEYS) {
+  for (const key of config.FEATURE_KEYS.filter((name) => config.defaultConfig()[name] !== true)) {
     assert.throws(
       () => config.requireMechanism(off, key),
       (error) =>
@@ -81,6 +96,22 @@ test("requireMechanism refuses with the documented code and names the setting", 
 });
 
 test("presets: the local one never turns on the mechanism that spends quota", () => {
-  assert.deepEqual(config.disabledPreset(), ALL_OFF);
-  assert.deepEqual(config.localPreset(), { ...ALL_OFF, actionFusion: true, observationPack: true });
+  assert.deepEqual(config.disabledPreset(), { ...ALL_OFF, turnMeasurement: false });
+  assert.deepEqual(config.localPreset(), {
+    ...ALL_OFF,
+    actionFusion: true,
+    observationPack: true,
+    turnMeasurement: true,
+  });
+  assert.equal(config.localPreset().evidencePreservingReducer, false);
+  assert.equal(config.localPreset().onlineContextCompact, false);
+});
+
+test("the per-turn measurement is a setting, not a mechanism", () => {
+  assert.equal(config.FEATURE_KEYS.includes("turnMeasurement"), false, "a measurement is not a mechanism");
+  assert.ok(config.BOOLEAN_KEYS.includes("turnMeasurement"), "it is still validated as a boolean");
+  assert.equal(config.resolveConfig({ turnMeasurement: "on" }).ok, false, "a non-boolean must be refused");
+  const off = config.resolveConfig({ observationPack: false, turnMeasurement: false }).config;
+  assert.equal(off.turnMeasurement, false);
+  assert.deepEqual(config.enabledMechanisms(off), []);
 });

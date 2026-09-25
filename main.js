@@ -155,21 +155,43 @@ function mechanismSummary(config) {
   return on.length ? on.join(", ") : "none";
 }
 
+/** Friendly names for the switches a preset sets, including the free ones. */
+const FRIENDLY_SWITCHES = {
+  actionFusion: "action fusion",
+  observationPack: "observation packing",
+  evidencePreservingReducer: "the evidence-preserving reducer",
+  onlineContextCompact: "online context compaction",
+  turnMeasurement: "per-turn measurement",
+};
+
+function presetList(preset) {
+  const on = [...configLib.enabledMechanisms(preset)];
+  if (preset.turnMeasurement === true) on.push("turnMeasurement");
+  return on.map((key) => FRIENDLY_SWITCHES[key] ?? key).join(", ");
+}
+
 async function registerCommands(pi) {
   const runs = {
     async "solPi.open"() {
       await pi.ui.openPanel({ title: metadata.NAME });
     },
     async "solPi.enableLocal"() {
-      await pi.plugin.setSettings(configLib.localPreset());
+      const preset = configLib.localPreset();
+      await pi.plugin.setSettings(preset);
       await pi.ui.showToast(
-        "SoL-Pi: action fusion and observation packing are on. Reducer and compaction stay off.",
+        `SoL-Pi: ${presetList(preset)} on. The reducer and the compaction mechanism stay off.`,
         "info",
       );
     },
     async "solPi.disableAll"() {
-      await pi.plugin.setSettings(configLib.disabledPreset());
-      await pi.ui.showToast("SoL-Pi: all four mechanisms are off.", "info");
+      // Built from the preset it applies, so the sentence cannot drift from what
+      // the switches actually did.
+      const preset = configLib.disabledPreset();
+      await pi.plugin.setSettings(preset);
+      await pi.ui.showToast(
+        `SoL-Pi: ${presetList(preset) || "no mechanism is"} on — nothing is packed and no turn is recorded.`,
+        "info",
+      );
     },
     async "solPi.compactBrief"() {
       const state = await tools.panelState(pi);

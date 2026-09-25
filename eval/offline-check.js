@@ -213,7 +213,7 @@ async function main() {
     return "plan mode refused, as the host does for every plugin tool";
   });
 
-  section("Every mechanism is off until the user turns it on");
+  section("Each switch does exactly what it says, in both directions");
 
   await check("fused_edit refuses while actionFusion is off, naming the setting", async () => {
     const message = await expectRefusal(
@@ -225,13 +225,28 @@ async function main() {
     return message.split(".")[0];
   });
 
-  await check("obs_pack pack/scan refuse while observationPack is off", async () => {
+  await check("obs_pack works on the shipped defaults, and refuses the moment it is switched off", async () => {
+    // Packing is the one mechanism that ships on: it removes a replay the model has
+    // already paid for and adds nothing, so the gate proves both directions -
+    // without setup it packs, and one switch ends it immediately.
+    const shipped = await stub.invokeTool("obs_pack", {
+      action: "pack",
+      text: BIG_RESULT,
+      tool: "bash",
+      tool_call_id: "call_default",
+    });
+    expect(shipped.packed === true, "packing must work with no setup at all");
+    expect(/^obs_[0-9a-f]{24}$/.test(shipped.id), `unexpected id ${shipped.id}`);
+
+    await stub.pi.plugin.setSettings({ observationPack: false });
     await expectRefusal(() => stub.invokeTool("obs_pack", { action: "pack", text: BIG_RESULT }), {
       code: "MECHANISM_DISABLED",
     });
     await expectRefusal(() => stub.invokeTool("obs_pack", { action: "scan" }), {
       code: "MECHANISM_DISABLED",
     });
+    await stub.pi.plugin.setSettings({ observationPack: true });
+    return "on by default, off the moment the switch is off";
   });
 
   await check("reduce_evidence refuses while the reducer is off", async () => {
@@ -1036,6 +1051,22 @@ async function main() {
     return `${unregisterCalls.length} unregister calls`;
   });
 
+  section("The hook route, exercised without the host");
+
+  // The agent-side module lives in a different process from the plugin, so it is
+  // exercised through its real entry point, with a temporary installation root.
+  // Each result is printed in `check`'s shape, so a failing hook check is a
+  // failing gate check, by name.
+  for (const item of await require("./agent-hooks-harness.js").run()) {
+    if (item.ok) {
+      results.push({ kind: "pass", name: item.name });
+      console.log(`  ok   ${item.name}${verbose ? ` — ${item.detail}` : ""}`);
+    } else {
+      failed += 1;
+      results.push({ kind: "fail", name: item.name, error: item.detail });
+      console.log(`  FAIL ${item.name}\n       ${item.detail}`);
+    }
+  }
   if (!verbose) {
     console.log("\nSections passed. Re-run with --verbose for per-check detail.");
   }

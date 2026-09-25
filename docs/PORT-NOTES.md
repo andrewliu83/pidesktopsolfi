@@ -27,11 +27,14 @@ upstream keeps in session entries is kept in files under the plugin's data
 directory instead.
 
 PI-Desktop *does* have the agent hook surface — it is the one upstream is written
-against, and it is reachable from a plugin only by contributing an ExtensionAPI
-module (`contributes.agentExtensions` plus the `agent.extension` permission, i.e.
-code running inside the agent process). This port does not do that, and
-"The hook surface, precisely" below states exactly what each route can and cannot
-reach, so the choice can be judged rather than assumed.
+against, and it is reachable from a plugin by contributing an ExtensionAPI module
+(`contributes.agentExtensions` plus the `agent.extension` permission, i.e. code
+running inside the agent process). This port does exactly that for the one hook that
+cannot be imitated from the plugin process: `hooks/agent-hooks.js` restores
+ObservationPack's `context` projection and records each turn on `turn_end` ("The hook
+route as built"). Everything else stays a tool or a command the user can read in the
+transcript, and "The hook surface, precisely" below states exactly what each route can
+and cannot reach, so the split can be judged rather than assumed.
 
 ## Where each upstream file went
 
@@ -47,6 +50,7 @@ reach, so the choice can be judged rather than assumed.
 | `extensions/observation-pack/observation.ts` | `lib/observation-pack.js` |
 | `extensions/observation-pack/ledger.ts` | `lib/ledger.js` (shared JSONL ledger) |
 | `extensions/observation-pack/index.ts` | `lib/tools.js` (`obs_pack`, `obs_recall`) |
+| `extensions/observation-pack/index.ts` (the `context` hook half) | `hooks/agent-hooks.js` (the agent-extension module) |
 | `extensions/evidence-preserving-reducer/*.ts` | `lib/reducer.js` (receipt, provider, archive, candidate, journal, config in one module) |
 | `extensions/online-context-compact/economics.ts` | `lib/compact-economics.js` |
 | `extensions/online-context-compact/plan.ts` | `lib/compact-plan.js` |
@@ -103,7 +107,7 @@ name.
 
 | Change | Why |
 |---|---|
-| Packing is an explicit `obs_pack` tool (`action: "pack" \| "scan" \| "list"`), not a projection hook | The plugin route has no `context` hook, so there is no place to install the automatic replacement — the agent-extension route does have one, and this port does not ship it ("The hook surface, precisely"). `scan` is the stand-in: it reads the live conversation through `session.getLlmContext()`, counts how many assistant messages follow each large tool result (upstream's replay count), and returns the eligible ones *with* their placeholders for the agent to apply. `pack` packs text the agent is holding. |
+| Packing is an explicit `obs_pack` tool (`action: "pack" \| "scan" \| "list"`) **and** a `context` projection in `hooks/agent-hooks.js` | The plugin route has no `context` hook and the agent-extension route does, so both are shipped: the projection is what makes the mechanism automatic, the tool is what keeps it usable when the grant is missing. `scan` reads the live conversation through `session.getLlmContext()`, counts how many assistant messages follow each large tool result (upstream's replay count), and returns the eligible ones *with* their placeholders for the agent to apply; `pack` packs text the agent is holding. The hook route sees each result in full, so its threshold and its `isError` rule are upstream's exactly. |
 | A scan never packs its own fused-call results; it reports how many it left alone (`fused_results_kept`) | A `fused_edit` result carries the `[then_run:…]` verdict the agent has to read. Upstream never faces this because the projection runs after the call has been read; a scan runs against a live conversation where that result is still actionable. The verdict marker sits on line 3, ahead of the output, so it survives the host's projection; the tool name is checked as well, because that identifies a fused call even when a scan sees only the head of a result. |
 | The scan's effective threshold is `min(requested, 8000)` and it reports `source_may_be_truncated` / `source_visible_chars` for every candidate | PI-Desktop projects at most 8000 characters of a tool result to a plugin, so a scan that insisted on 10 KiB could never find anything. Archives made from a truncated view say so in their own placeholder, and the "Nothing to pack" text names the upstream threshold and points at `obs_pack action "pack"`. |
 | `obs_pack` and `obs_recall` stay usable while the mechanism is off | The rest of the mechanism (automatic packing) is what the setting gates. Refusing recall too would strand bytes that are already on disk and could not be read any other way. |
@@ -163,7 +167,7 @@ is upstream's.
 
 | Change | Why |
 |---|---|
-| The tool is named `plan_update`, and `compact_check` exposes the verdict | Upstream's plan tool is `update_plan`; the port's name keeps the mechanism prefix in the plugin's own namespace, and `compact_check` exists because this route cannot hook `turn_end` (the agent-extension route can — see "The hook surface, precisely") — the agent asks for the measurement instead. |
+| The tool is named `plan_update`, and `compact_check` exposes the verdict | Upstream's plan tool is `update_plan`; the port's name keeps the mechanism prefix in the plugin's own namespace. `compact_check` exists because a plugin cannot subscribe to `turn_end`: the hook route does subscribe it, but only to record what each turn cost ("The hook route as built"), so the economics is still asked for by name. |
 | `compact_check` reports the verdict, writes the carry-forward brief, and tells the user to run `/compact`; it never compacts | PI-Desktop's native compaction is a user action only (a plugin cannot start it, and `/compact` is not callable from a plugin). The plugin therefore says plainly what the economics decided and hands the decision over, instead of pretending it compacted. |
 | The plugin never emits `native_not_compactable` | Upstream downgrades a positive decision with that code when *its host's* native compaction is not feasible for the branch (`nativeCompactionFeasible(context.sessionManager.getBranch(), …)`). A plugin cannot inspect the host's branch or its compactor's feasibility, so that code is unreachable here; whether PI-Desktop can compact is stated to the user rather than guessed at. |
 | Plan and economics state live in `plan.json` (+ `compaction-brief.md`) under the plugin data directory, keyed by session bucket | Upstream appends its state to the session entries (`appendOnlineState`) and restores it from them (`restoreOnlineState`). A plugin cannot append to the host's session log, so the same per-session state is rebuilt in files. |
@@ -198,7 +202,7 @@ sent to a model. The only commands the plugin runs are the ones the agent passes
 
 | Upstream | Why |
 |---|---|
-| The hook surface itself (`context`, `tool_result`, `turn_end`, `session_start`, `session_before_tree`, `session_tree`, `before_provider_request`, `input`, `agent_settled`, `session_compact`, `session_shutdown`) | Not reachable from the plugin code this port ships: a plugin's own process API has no agent event. It *is* reachable by contributing an ExtensionAPI module (`agent.extension`), which this port deliberately does not do — see "The hook surface, precisely". Each hook is replaced by an explicit tool (`obs_pack scan`, `compact_check`) or dropped with the behaviour it triggered. |
+| The hook surface itself (`context`, `tool_result`, `turn_end`, `session_start`, `session_before_tree`, `session_tree`, `before_provider_request`, `input`, `agent_settled`, `session_compact`, `session_shutdown`) | Not reachable from the *plugin* process: its API has no agent event. Two of them are reachable — and are now used — from an ExtensionAPI module contributed with `agent.extension`: `context` and `turn_end`, in `hooks/agent-hooks.js` ("The hook route as built"). The rest stay absent by design: `tool_result` would let the reducer fire by itself, the OCC hooks would let the port *act* on a decision instead of advising, and `input` / `session_before_tree` / `session_tree` are never emitted by Desktop at all. |
 | Overriding the host's `edit` / `write` | Refused on *both* routes, and by name: a plugin cannot replace a host tool, and the agent-side extension loader rejects a reserved tool name with `rejected_registration: tool name "edit" is already taken`. See Action Fusion above. |
 | Running native compaction, and `nativeCompactionFeasible` | Not possible from a plugin; see Online Context Compact above. |
 | Appending/restoring state through session entries | Not exposed to plugins; state is kept in files. |
@@ -207,7 +211,9 @@ sent to a model. The only commands the plugin runs are the ones the agent passes
 
 ## The hook surface, precisely
 
-The wording matters here, because the two routes differ and only one of them is used.
+The wording matters here, because the two routes differ and **both** of them are used:
+the plugin route for everything the user asks for, the agent-extension route for the one
+thing a plugin process cannot see.
 
 **A plugin's own code gets no agent hook.** `globalThis.pi` is built by `buildApi()` in
 `out/main/plugin-host-process.js`, and its only event surface is `events.on` / `events.off`.
@@ -245,20 +251,57 @@ a handler may ask for:
 
 | Upstream hook | Status | What it would give the port |
 |---|---|---|
-| `context` (ObservationPack's projection layer) | emitted, `result` | automatic replacement of already-replayed results — what `obs_pack scan` stands in for |
+| `context` (ObservationPack's projection layer) | emitted, `result` — **shipped** in `hooks/agent-hooks.js` | automatic replacement of already-replayed results, with `obs_pack scan` as the fallback when the grant is absent |
 | `tool_result` (the reducer's trigger) | emitted, `result` | automatic candidate detection instead of an explicit `reduce_evidence` call |
-| `before_provider_request`, `turn_end`, `agent_settled`, `session_compact`, `session_start`, `session_shutdown` (OCC) | emitted (`turn_end` · `agent_settled` · `session_compact` · `session_*` as notifications) | measuring the economics at every turn end instead of when `compact_check` is called |
+| `before_provider_request`, `turn_end`, `agent_settled`, `session_compact`, `session_start`, `session_shutdown` (OCC) | `turn_end` is subscribed by `hooks/agent-hooks.js` as a notification; the rest are emitted but unused | the port records the cost of every turn where `compact_check` prices the economics on demand. A *decision* at turn end is not made: the port will not act on a compaction it cannot run. |
 | `input`, `session_before_tree`, `session_tree` (OCC's prompt rewrite and tree guard) | **deferred: never emitted** | nothing — unavailable on either route |
 | `pi.registerTool({ name: "edit"｜"write", … })` (Action Fusion) | refused: `rejected_registration: tool name "edit" is already taken` (reserved names are the session's tool catalog) | nothing — the fused parameter can only ever live on a *separate* tool |
 
-**Why this port ships only the plugin route.** Contributing an agent extension means
-asking for `agent.extension` — the host's own description: *"Runs ExtensionAPI modules
-inside the agent process with the same access as the agent's own tools. Enable only code
-you trust."* Everything here is otherwise a tool call the user can read in the transcript,
-with no code inside the agent process and all four mechanisms off by default; trading that
-for automaticity is a posture change, not a bug fix, so it is the user's decision rather
-than a default. The cost of the choice is visible in the table above: `obs_pack scan` and
-`compact_check` exist *because* this route has no hook.
+**Both routes are used, for different halves of the problem.** Contributing an agent
+extension means asking for `agent.extension` — the host's own description: *"Runs
+ExtensionAPI modules inside the agent process with the same access as the agent's own
+tools. Enable only code you trust."* That grant is declared now, because the projection
+upstream implements as a `context` hook cannot be done from a plugin process at all.
+
+### The hook route as built
+
+`hooks/agent-hooks.js` (one entry of the eight `contributes.agentExtensions` allows) is
+the whole of the agent-side code. It registers **two** events and nothing else, and the
+harness asserts both that list and that the module touches exactly one member of the
+ExtensionAPI (`on`):
+
+- **`context`** — upstream's ObservationPack projection, over the port's own libraries
+  so the two routes cannot drift: the 10 KiB threshold, `FULL_SENDS = 2`, the replay
+  count taken from the assistant messages that follow the result *or* from this
+  process's own memory once it has seen the message, the exact placeholder, the
+  `[then_run:…]` guard shared with `obs_pack scan`, `isError` left alone, and the same
+  `full` / `placeholder` ledger events carrying `route: "agent-extension"`. The count
+  of sends a result has already had is keyed per session root, so the rule survives a
+  reload exactly as upstream's does.
+- **`turn_end`** — the per-turn record. It appends one line to
+  `hook-route/measurements.jsonl` (requests, the context size before projection,
+  observations replaced, tokens kept out, turn id, stop reason) and returns **nothing
+  at all**: the runtime replaces a result only when it gets one, so a measurement
+  cannot change a conversation even by accident. No payload text is ever written.
+
+Three limitations, all checked rather than asserted in prose:
+
+- **It registers no tool.** The runtime refuses a name the session's catalog already
+  holds (see `edit` / `write` above), and this plugin already contributes `obs_recall`
+  through the manifest, so the module's only job is those two hooks.
+- **It writes nowhere else.** The data root comes from `PI_DESKTOP_DATA_DIR` rather
+  than `ctx.sessionManager.getSessionDir()`, which the sidecar's ExtensionContext does
+  not provide — upstream's `runtimeRoot(ctx)` cannot resolve in Desktop, so the port
+  reads the environment the host itself sets instead. Every path still comes from
+  `lib/paths.js`, and files stay `0600` inside `0700` directories.
+- **It fails open.** A missing data directory, an unreadable settings file, or any
+  other error hands the conversation back unchanged and says why in the log. An
+  invalid settings file is a refusal rather than a default: neither route decides to
+  rewrite a request on no evidence.
+
+`obs_pack scan` and `compact_check` remain, and are now the *fallback* rather than the
+only route: if the grant is missing or the module was never loaded, everything still
+works explicitly. The panel reports which of the two is live instead of implying it.
 
 All of it is checkable on a local install: `buildApi()` in
 `app.asar/out/main/plugin-host-process.js`, the four event-frame sites and `Lq` in the
@@ -266,10 +309,12 @@ app and sidecar bundles, and `registerAgentExtensions` in `PluginRuntime`.
 
 ## What proves what
 
-`bash scripts/verify.sh --mutations` runs all of it: 18 files parse, the manifest
-is byte-identical to what `lib/metadata.js` generates, 60 `node:test` assertions
-pass, the 54-check offline gate passes against a strict stub of the real host API
-(an invented API throws), and 8 mutations of this plugin are each caught by name.
+`bash scripts/verify.sh --mutations` runs all of it: 20 files parse, the manifest
+is byte-identical to what `lib/metadata.js` generates, 61 `node:test` assertions
+pass, the 64-check offline gate passes against a strict stub of the real host API
+(an invented API throws), 10 of those checks load `hooks/agent-hooks.js` the way the
+agent sidecar does — a temporary installation root and synthetic message arrays —
+and 15 mutations of this plugin are each caught by name.
 
 The gate is deliberately adversarial about the claims in this document: that a
 disabled mechanism refuses, that a refused call changes nothing on disk, that a
@@ -284,7 +329,8 @@ fused verdict, and that the shipped manifest matches the code that loads it.
   so.
 - Error results are not distinguishable in the context a plugin can read, so a scan
   cannot tell a failing result from a passing one; it packs by size and replay
-  count only.
+  count only. The hook route has no such blind spot: the message it receives still
+  carries `isError`, so it applies upstream's rule exactly.
 - `compact_check` measures and advises; it cannot compact.
 - The economics needs a request horizon before it can price anything. When the plan
   has no completed boundaries yet, the decision says `horizon_unavailable` and

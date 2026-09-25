@@ -42,7 +42,7 @@ run_step() {
 check_syntax() {
   local failed=0
   local file
-  for file in lib/*.js main.js eval/*.js views/*.js scripts/*.mjs; do
+  for file in lib/*.js hooks/*.js main.js eval/*.js views/*.js scripts/*.mjs; do
     [ -e "$file" ] || continue
     if ! node --check "$file" > /dev/null 2>&1; then
       printf '   %s does not parse\n' "$file"
@@ -50,7 +50,7 @@ check_syntax() {
     fi
   done
   [ "$failed" -eq 0 ] || return 1
-  printf '   %s files parse\n' "$(ls lib/*.js main.js eval/*.js views/*.js scripts/*.mjs | wc -l | tr -d ' ')"
+  printf '   %s files parse\n' "$(ls lib/*.js hooks/*.js main.js eval/*.js views/*.js scripts/*.mjs | wc -l | tr -d ' ')"
 }
 
 run_step "Syntax of every source file" check_syntax

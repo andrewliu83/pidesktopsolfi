@@ -77,6 +77,48 @@ mutations=(
   'host.session.get({ id: sessionId })'
   'host.session.get({ id: "" })'
   "FAIL the session's own project folder answers when the window has none"
+
+  "the hook route stops honoring upstream's two full sends"
+  "hooks/agent-hooks.js"
+  'previousSends < observation.FULL_SENDS'
+  'previousSends <= observation.FULL_SENDS'
+  'FAIL a large result is full for its first two sends, then exact-placeholder'
+
+  "the hook route projects even when packing is switched off"
+  "hooks/agent-hooks.js"
+  'archive.config.observationPack !== true'
+  'archive.config.observationPack === true'
+  'FAIL switching packing off returns the messages byte-identical and archives nothing'
+
+  "the per-turn record stops honoring its own switch"
+  "hooks/agent-hooks.js"
+  'archive.config.turnMeasurement !== true'
+  'archive.config.turnMeasurement === true'
+  'FAIL the per-turn record is written once per turn, and returns nothing;FAIL switching the measurement off writes nothing'
+
+  "the per-turn record is mixed into the observation ledger"
+  "hooks/agent-hooks.js"
+  'paths.hookLedgerPath(root)'
+  'paths.observationLedgerPath(root)'
+  'FAIL the per-turn record is written once per turn, and returns nothing'
+
+  "the panel forgets the route that announced itself"
+  "lib/tools.js"
+  'if (basename(root) !== "shared") candidates.push(join(dirname(root), "shared"));'
+  'if (false) candidates.push(join(dirname(root), "shared"));'
+  'FAIL the status file says which route is live, and the panel can read it'
+
+  "the status write stops creating its own directory"
+  "hooks/agent-hooks.js"
+  'await mkdir(dirname(target), { recursive: true, mode: 0o700 });'
+  ''
+  'FAIL the status file says which route is live, and the panel can read it'
+
+  "the panel lets a repeated packing overwrite one observation's saving"
+  "lib/tools.js"
+  'if (!previous.counted && removed > 0) {'
+  'if (removed > 0) {'
+  'FAIL a large result is full for its first two sends, then exact-placeholder'
 )
 
 failures=0

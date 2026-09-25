@@ -61,8 +61,9 @@ bash scripts/verify.sh                              # optional: prove it first
 Then ask the agent to run `PluginPack` on this directory (or run
 `pnpm pi-plugin pack .`), which writes
 `dist/local.sol-pi-<version>.piplug` — the version comes from `lib/metadata.js`, so the
-file is named after the release it holds. Install that file from the Plugins page; the
-app asks you to grant `agent.tool.register` and `agent.prompt.inject` on the way in.
+file is named after the release it holds. Install that file from the Plugins page; on
+the way in the app asks you to grant `agent.tool.register`, `agent.prompt.inject` and
+`agent.extension` — the last one is what loads the hook module.
 
 Copying this folder into `~/.pi-desktop/plugins/installed/` by hand is **not** one
 of those routes: the app keeps its own registry of installed plugins, so a dropped
@@ -71,24 +72,30 @@ folder is invisible to it. Use one of the two above.
 The folder must keep its shape either way: `manifest.json` and `main.js` at the
 top level.
 
-Then open the panel (`SoL-Pi: Open panel`) or run one of the commands below, and
-turn on the mechanisms you want. The conservative preset —
+Then open the panel (`SoL-Pi: Open panel`) or run one of the commands below.
+
+Two switches are already on when the package is installed, and neither invents
+content: **ObservationPack** replaces a large tool result only after the agent has
+received it twice (every byte is archived first, and `obs_recall` pages it back),
+and **the per-turn measurement** writes down what each turn cost without touching
+the conversation. The preset
 
 ```
 SoL-Pi: Enable local mechanisms   (solPi.enableLocal)
 ```
 
-— enables **Action Fusion and ObservationPack only**: both act locally, and
-neither spends a model call. The reducer (`evidencePreservingReducer`) and the
-compaction economics (`onlineContextCompact`) stay off until you enable them
-deliberately.
+adds **Action Fusion** on top: it also acts locally and spends no model call. The
+reducer (`evidencePreservingReducer`) and the compaction economics
+(`onlineContextCompact`) stay off until you enable them deliberately, because those
+are the two that either spend a model call or change what the model is asked.
 
 ## Settings
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `actionFusion` | boolean | `false` | Lets `fused_edit` run the follow-up command |
-| `observationPack` | boolean | `false` | Lets `obs_pack` and `obs_recall` archive and page results |
+| `observationPack` | boolean | `true` | Lets `obs_pack`, `obs_recall` and the hook route archive and page results |
+| `turnMeasurement` | boolean | `true` | Records one line per turn; injects nothing into the conversation |
 | `evidencePreservingReducer` | boolean | `false` | Lets `reduce_evidence` spend one model call |
 | `onlineContextCompact` | boolean | `false` | Lets `plan_update` and `compact_check` work |
 | `evidencePreservingReducerProvider` | string | `openai-codex` | Provider id for the reducer call (upstream's default) |
@@ -107,8 +114,8 @@ refusal tells you so when a call cannot be made.
 | Command | What it does |
 | --- | --- |
 | `solPi.open` | Opens the work panel |
-| `solPi.enableLocal` | Enables Action Fusion and ObservationPack only |
-| `solPi.disableAll` | Turns all four mechanisms off |
+| `solPi.enableLocal` | Enables Action Fusion (packing and the measurement are already on) |
+| `solPi.disableAll` | Turns every mechanism off, and the per-turn measurement with them |
 | `solPi.compactBrief` | Writes the carry-forward brief and tells you to run `/compact` |
 
 ## Tools
@@ -222,9 +229,14 @@ sessions/<bucket>/evidence-preserving-reducer/objects/<hh>/<sha256>.txt
 sessions/<bucket>/evidence-preserving-reducer/journal.jsonl
 sessions/<bucket>/online-context-compact/plan.json
 sessions/<bucket>/online-context-compact/compaction-brief.md
+sessions/<bucket>/hook-route/status.json
+sessions/<bucket>/hook-route/measurements.jsonl
 ```
 
-The panel lists these buckets and can read any archive back in exact pages.
+The panel lists these buckets and can read any archive back in exact pages. The last
+two files belong to the hook route: `status.json` says which route is live, and
+`measurements.jsonl` holds one line per turn — what the turn cost, and the payload
+text of nothing.
 
 ## Verification
 
@@ -237,11 +249,12 @@ What that proves, and how:
 
 | Step | What it checks |
 | --- | --- |
-| Syntax | All 18 source files parse |
+| Syntax | All 20 source files parse |
 | Manifest freshness | `manifest.json` is byte-identical to what `lib/metadata.js` generates; the plugin also re-checks this at load time and refuses to load on drift |
-| Unit tests | 60 `node:test` assertions over config resolution, the observation store and paging, receipt validation, the economics decisions, plan parsing, and path containment |
-| Offline gate | 54 checks that load the plugin against a **strict stub of the real host API** (an invented API throws), then exercise every tool, every refusal, the panel channels, the commands, and unload |
-| Mutation gate | Breaks one guarantee at a time (opt-in removed, manifest drift, a byte dropped from an archive, receipt verification skipped, an invented host API, the credential guard weakened, the fused-result guard disarmed, the session-project fallback disarmed) and requires the gate to fail **by name**: 8/8 caught |
+| Unit tests | 61 `node:test` assertions over config resolution, the observation store and paging, receipt validation, the economics decisions, plan parsing, and path containment |
+| Offline gate | 64 checks that load the plugin against a **strict stub of the real host API** (an invented API throws), then exercise every tool, every refusal, the panel channels, the commands, and unload |
+| Hook-route harness | 10 checks that load `hooks/agent-hooks.js` the way the runtime does — a temporary installation root, synthetic message arrays — and assert the two full sends, the exact placeholder, the archive on disk, the ledger, both switches in both directions, the per-turn record, and the panel's own reading of the status file |
+| Mutation gate | Breaks one guarantee at a time (opt-in removed, manifest drift, a byte dropped from an archive, receipt verification skipped, an invented host API, the credential guard weakened, the fused-result guard disarmed, the session-project fallback disarmed, the hook route's two-full-send rule, packing switched off, the measurement switched off, the measurement ledger mixed into the observation ledger, the announced route forgotten by the panel, the status directory not created, a repeated packing overwriting one observation's saving) and requires the gate to fail **by name**: 15/15 caught |
 
 The gate is deliberately adversarial about this plugin's own claims: it asserts
 that a disabled mechanism refuses, that a refused call changes nothing on disk, a
@@ -251,9 +264,10 @@ model, and no oversized tool result is ever returned as a quiet success.
 PI-Desktop's own packaging check (`PluginCheck`) passes on this directory and
 reports two warnings, both expected:
 
-- *high-risk permissions require an explicit user grant* — `agent.tool.register`
-  and `agent.prompt.inject` are what make the six tools and the post-compaction
-  instruction possible at all. The host asks you to grant them when you install.
+- *high-risk permissions require an explicit user grant* — `agent.tool.register`,
+  `agent.prompt.inject` and `agent.extension` are what make the six tools, the
+  post-compaction instruction and the context hook possible at all. The host asks
+  you to grant them when you install.
 - *`clipboard.write` is declared but `main.js` never calls `clipboard.writeText`* —
   the call happens in the panel (`views/app.js`), and the host serves that channel
   itself behind this permission. Removing the permission would break the Copy
@@ -263,45 +277,62 @@ reports two warnings, both expected:
 ## Security posture
 
 - Least privilege: `ui.view`, `ui.panel`, `clipboard.write`,
-  `agent.tool.register`, `agent.prompt.inject`, `agent.complete`, `session.read`,
-  `models.list`. No filesystem, network, desktop-control or browser permission is
-  requested; file access is project-relative and re-checked on the real path.
+  `agent.tool.register`, `agent.prompt.inject`, `agent.complete`,
+  `agent.extension`, `session.read`, `models.list`. No filesystem, network,
+  desktop-control or browser permission is requested; file access is
+  project-relative and re-checked on the real path.
   `clipboard.write` is the panel's Copy button (the host serves that channel behind
   this permission), and `notify` is deliberately absent: this plugin only shows
   toasts, and the host does not gate `ui.showToast` on the notification APIs.
+- `agent.extension` is the one grant whose code runs inside the agent process: it is
+  what loads `hooks/agent-hooks.js`. That module touches exactly one member of the
+  agent API (`on`) and writes only under the plugin's own data directory — the
+  harness asserts both rather than trusting this sentence.
 - No network access of its own: the only model access is the host's
   `pi.agent.complete`, with the reducer's own prompt marking the log as untrusted
   data and one shot per call.
-- All four mechanisms ship disabled, and refusals name the setting to enable.
+- Two switches ship on, and neither invents content: `observationPack` replaces a
+  result that the agent has already received twice (archiving every byte first, and
+  paging it back on request), and `turnMeasurement` only appends a line to its own
+  ledger. The other three ship off, and every refusal names the setting to enable.
 - Archive files are written `0600` inside `0700` directories.
 
 ## Honest limitations
 
-- **No context hook — on the route this plugin takes.** A plugin's own code receives no
-  agent event at all (its API carries exactly seven, none of them a tool result or a
-  provider request), so nothing is replaced behind your back: `obs_pack` and
-  `reduce_evidence` are called by the agent (or by the scan) and hand back the text to
-  use. PI-Desktop *does* expose the upstream hook surface — to ExtensionAPI modules
-  contributed through `contributes.agentExtensions` with the `agent.extension`
-  permission, i.e. code running inside the agent process, which this plugin deliberately
-  does not ship. `docs/PORT-NOTES.md` → "The hook surface, precisely" lists the events
-  one by one, including the ones PI-Desktop recognises but never emits. The archive
-  format, the id derivation and the paging contract are unchanged either way, which is
-  what makes an archived result still readable the same way.
+- **Two routes, one archive format.** The plugin's own code receives no agent event
+  (its API carries exactly seven, none of them a tool result or a provider request),
+  so `obs_pack`, `reduce_evidence`, `plan_update` and `compact_check` are calls the
+  agent makes on purpose. The automatic half of upstream's ObservationPack — the
+  `context` projection — ships separately as `hooks/agent-hooks.js`, contributed
+  through `contributes.agentExtensions` with the `agent.extension` permission. That
+  module runs inside the agent process, sees each provider request before it is
+  sent, and is what makes "the same result stops being replayed after two sends"
+  true without anyone asking for it. It registers no tool, writes nothing outside
+  this plugin's data directory, and returns the conversation unchanged on any error.
+- **The hook route can be absent where the tool route cannot.** If the
+  `agent.extension` grant is missing or the module was never loaded, everything
+  still works explicitly: `obs_pack scan` reads the live conversation through
+  `session.getLlmContext()` and hands back the eligible results with their
+  placeholders. The panel says which of the two is live instead of implying it.
 - **`scan` sees what a plugin can see.** The host hands a plugin at most 8000
   characters of one tool result, so a scan uses that as its floor and says so in
   its output; a result you still hold in full can be packed directly with
-  `action: "pack"`.
-- **Error results are not detectable in the context view.** Upstream keeps a
-  failing tool result verbatim; the plugin cannot see the `isError` flag from
-  `getLlmContext()`, so `scan` cannot apply that rule — the gate documents this
-  rather than pretending otherwise.
+  `action: "pack"`, and the hook route always sees the whole result.
+- **Error results are only visible to the hook route.** Upstream keeps a failing
+  tool result verbatim. `getLlmContext()` does not expose the `isError` flag, so
+  `scan` cannot apply that rule and the gate documents this rather than pretending
+  otherwise. The hook route does apply it, because a message still carries the flag.
 - **No native compaction.** See `compact_check` above: the plugin prepares the
   checkpoint, the user runs `/compact`.
 - **`obs_recall`, `obs_pack list` and `obs_pack pack` stay usable while
   ObservationPack is off** on purpose: evidence you already archived must never be
   stranded because a setting was turned off. Everything that *spends* or *scans*
   refuses.
+- **A switch takes effect on the next request, not the next reload.** Both routes
+  read the settings file while a request is being prepared, so turning packing off
+  in the panel stops the replacement at the next request rather than at the next
+  restart. An unreadable settings file is a refusal: neither route guesses a
+  default when the file it was told to read is not valid JSON.
 
 ## Repository layout
 
@@ -309,6 +340,7 @@ reports two warnings, both expected:
 manifest.json          generated from lib/metadata.js (never hand-edited)
 main.js                plugin entry: tools, commands, panel channels
 lib/                   the ported mechanisms and the host adapter
+hooks/agent-hooks.js   the agent-extension module: `context` + `turn_end`, no tool
 views/                 the work-panel UI (no remote resources, no inline script)
 skills/                five skills PI-Desktop loads for the agent
 test/                  node:test unit tests

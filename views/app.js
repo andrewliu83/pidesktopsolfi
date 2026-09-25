@@ -89,6 +89,34 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
 }
 
+/**
+ * Which route packed something, in the panel's own words.
+ *
+ * The two routes are not interchangeable: `agent-extension` is the hook module
+ * inside the agent process, which sees a tool result in full, while `tool` is a
+ * call the agent made on purpose.
+ */
+function routeLabel(route) {
+  if (route === "agent-extension") return "hook route";
+  if (route === "tool") return "tool call";
+  return route ? String(route) : "—";
+}
+
+/**
+ * What the hook route says about itself, or why there is nothing to say.
+ *
+ * "loaded" is deliberately weaker than "live": the module announces itself as
+ * soon as the agent process loads it, which is not the same as having served a
+ * request in the session the panel is showing.
+ */
+function hookRouteLabel(hook) {
+  if (!hook) return "unknown";
+  if (hook.error) return "status unreadable";
+  if (hook.live) return "live";
+  if (hook.announced) return "loaded, no request here yet";
+  return "not loaded";
+}
+
 function formatWhen(value) {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -208,7 +236,12 @@ function renderBuckets(payload) {
 function renderTotals(payload) {
   view.bucket = payload.bucket ?? null;
   const totals = payload.totals ?? {};
+  const hook = payload.hook_route ?? null;
   const entries = [
+    // Which route is live comes first: it is the answer to "why is nothing here
+    // yet?" - either the module has not run, or it simply has not packed.
+    ["Hook route", hookRouteLabel(hook)],
+    ["Turns measured", hook?.measured_turns ?? 0],
     ["Packed observations", totals.observations ?? 0],
     ["Read back", totals.recalled ?? 0],
     ["Archived bytes", formatBytes(totals.archived_bytes ?? 0)],
@@ -235,7 +268,7 @@ function renderObservations(payload) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = cell("Nothing packed in this session yet.", "empty");
-    td.colSpan = 6;
+    td.colSpan = 7;
     tr.appendChild(td);
     els.observations.appendChild(tr);
     return;
@@ -245,6 +278,7 @@ function renderObservations(payload) {
     tr.append(
       cell(row.id ?? "—", "mono"),
       cell(row.tool ?? "—"),
+      cell(routeLabel(row.route)),
       cell(formatBytes(row.original_bytes), "num"),
       cell(String(row.removed_tokens ?? "—"), "num"),
       cell(formatWhen(row.packed_at)),
