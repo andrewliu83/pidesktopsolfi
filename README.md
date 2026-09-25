@@ -60,7 +60,8 @@ bash scripts/verify.sh                              # optional: prove it first
 
 Then ask the agent to run `PluginPack` on this directory (or run
 `pnpm pi-plugin pack .`), which writes
-`dist/local.sol-pi-0.1.0.piplug`. Install that file from the Plugins page; the app
+`dist/local.sol-pi-<version>.piplug` (version comes from `lib/metadata.js`, so the
+file is named after the release it holds — `0.1.1` today). Install that file from the
 asks you to grant `agent.tool.register` and `agent.prompt.inject` on the way in.
 
 Copying this folder into `~/.pi-desktop/plugins/installed/` by hand is **not** one
