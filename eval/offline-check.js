@@ -771,7 +771,11 @@ async function main() {
     expect(outcome.compaction.context_tokens > 0, "the context must be measured");
     expect(typeof outcome.compaction.reason === "string", "a reason code is required");
     expect(outcome.text.includes("cannot perform it"), "it must say that it cannot compact");
-    expect(outcome.text.includes("/compact"), "it must hand the user the command instead");
+    if (outcome.compaction.compact) {
+      expect(outcome.text.includes("/compact"), "a positive verdict must hand the user the command");
+    } else {
+      expect(outcome.text.includes("Continue working"), "a deferred verdict must not ask for premature compaction");
+    }
     expect(existsSync(outcome.brief_path), "a brief must be written");
     expect(outcome.horizon_basis.context_window_tokens > 0, "the window must be reported");
     return `${outcome.compaction.reason}, ${outcome.compaction.context_tokens} tokens`;
@@ -990,7 +994,7 @@ async function main() {
       expect(existsSync(path), `${relative} is missing`);
       const raw = readFileSync(path, "utf8");
       expect(raw.length < 128 * 1024, `${relative} is over the host's 128 KiB limit`);
-      const match = /^---\n([\s\S]*?)\n---\n/.exec(raw);
+      const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw);
       expect(match, `${relative} has no frontmatter`);
       const front = match[1];
       const name = /^name:\s*(.+)$/m.exec(front)?.[1]?.trim();

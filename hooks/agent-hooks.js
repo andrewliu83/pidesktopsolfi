@@ -47,7 +47,7 @@
  * instead of the next reload.
  */
 
-const { mkdir, readFile, stat, writeFile } = require("node:fs/promises");
+const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const { dirname, join } = require("node:path");
 
 const fusion = require("../lib/action-fusion.js");
@@ -65,14 +65,6 @@ const HOOK_LEDGER_EVENT = "turn";
 /** Resolve one directory once, and reuse it: the host root cannot move. */
 function createCache() {
   return { dataDir: null };
-}
-
-async function isDirectory(path) {
-  try {
-    return (await stat(path)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -94,15 +86,10 @@ async function resolveDataDir(env = process.env, cache = createCache()) {
       { code: "NO_DATA_DIR" },
     );
   }
-  let chosen = candidates[0];
-  for (const candidate of candidates) {
-    if (await isDirectory(join(candidate, "sessions"))) {
-      chosen = candidate;
-      break;
-    }
-  }
-  cache.dataDir = chosen;
-  return chosen;
+  // The canonical plugin directory need not exist on the first provider
+  // request. Never infer ownership from a generic sessions directory.
+  cache.dataDir = candidates[0];
+  return cache.dataDir;
 }
 
 /** The session id the archive is keyed by, from the first source that has one. */
