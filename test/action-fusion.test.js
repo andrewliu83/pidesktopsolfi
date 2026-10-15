@@ -58,7 +58,8 @@ test("a target has to stay inside the project root, and away from credentials", 
   const inside = await fusion.resolveInsideRoot(root, "./src/app.js");
   assert.equal(inside.relativePath, "src/app.js");
   // Containment is checked on the real path, so the answer is under the resolved root.
-  const realRoot = realpathSync(root);
+  // Match fs/promises.realpath: native expands Windows 8.3 aliases in CI temp paths.
+  const realRoot = realpathSync.native(root);
   assert.equal(inside.absolutePath, join(realRoot, "src", "app.js"));
 
   const created = await fusion.resolveInsideRoot(root, "src/deep/new.txt");
@@ -87,7 +88,7 @@ test("a symlink out of the project is refused even though the path looks relativ
 });
 
 test("the path forms upstream accepts are resolved, then pinned inside the root", async () => {
-  const realRoot = realpathSync(root);
+  const realRoot = realpathSync.native(root);
   // Exercise a real alias on every platform, not just macOS's /var -> /private/var.
   const alias = join(outside, "project-alias");
   symlinkSync(root, alias, process.platform === "win32" ? "junction" : "dir");
