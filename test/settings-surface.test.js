@@ -132,7 +132,7 @@ test("every declared skill exists, has frontmatter and a usable description", ()
     assert.ok(existsSync(path), `${relative} is declared but missing`);
     const raw = readFileSync(path, "utf8");
     assert.ok(raw.length < 128 * 1024, `${relative} exceeds the host's 128 KiB skill limit`);
-    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(raw);
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw);
     assert.ok(frontmatter, `${relative} needs frontmatter`);
     const name = /^name:\s*(.+)$/m.exec(frontmatter[1])?.[1]?.trim();
     const description = /^description:\s*(.+)$/m.exec(frontmatter[1])?.[1]?.trim();

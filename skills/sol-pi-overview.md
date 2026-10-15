@@ -5,7 +5,7 @@ description: Use when a long PI-Desktop turn is burning context, a tool result i
 
 # SoL-Pi for PI-Desktop
 
-SoL-Pi is NVIDIA's agent-efficiency work, ported here as a PI-Desktop plugin. It gives you four mechanisms, each aimed at one way a long agent turn wastes context. **All four ship disabled.** They are opt-in because two of them change how you call tools and one of them spends quota.
+SoL-Pi is NVIDIA's agent-efficiency work, ported here as a PI-Desktop plugin. It gives you four mechanisms, each aimed at one way a long agent turn wastes context. **ObservationPack and per-turn measurement ship enabled.** Action Fusion, the evidence reducer and compaction planning require explicit opt-in. The reducer may spend model quota; archived evidence remains recallable after packing is disabled.
 
 Check what is on before relying on anything: run `plugin_local_sol_pi_plan_update`'s sibling tool `plugin_local_sol_pi_compact_check` only after the user has enabled that mechanism, or read the SoL-Pi panel (`SoL-Pi` view in the work panel, or the `SoL-Pi: Open` command). A disabled mechanism refuses with a message naming the setting to change — a refusal is not a bug to work around, it is the user saying "not now".
 
@@ -33,7 +33,7 @@ The user turns them on in the panel, in PI-Desktop's plugin settings, or with th
 These are real, and you should not paper over them:
 
 1. **Compaction is advice, not action.** Upstream SoL-Pi compacts the conversation itself. A PI-Desktop plugin cannot trigger native compaction — that is a user action (`/compact`). `compact_check` therefore writes a carry-forward brief and tells the user to compact; it never compacts for them.
-2. **The mechanisms are tools here.** Upstream hooks fire automatically inside the agent runtime. PI-Desktop exposes tool registration, prompt skills and a one-shot completion, so each mechanism became a tool you call deliberately. Nothing fires behind your back.
+2. **Most mechanisms are explicit tools, but ObservationPack is also automatic.** With `agent.extension` granted and packing enabled, its `context` hook projects large replayed results into placeholders before provider requests. Turn measurement also runs automatically. The reducer and compaction planner remain explicit tools; they do not silently spend quota or compact.
 3. **PI-Desktop caps one tool result at 8000 characters** when it projects the session, so `obs_pack` `action: "scan"` can only see that much of any single result. It says so when it matters; packing a result you still hold in full is always preferable.
 4. **Plugin tools are unavailable in Plan and Goal mode.** PI-Desktop 0.15.x refuses plugin tools in those modes, so do not plan around them there.
 5. **Observation archives are per session**, under the plugin's own data directory, keyed by session id, and are never deleted automatically.

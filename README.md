@@ -10,7 +10,7 @@ derivations, receipt schema, marker strings, reason codes and economics
 constants are the upstream ones, and `docs/PORT-NOTES.md` lists every place where
 PI-Desktop forced a different design together with the reason.
 
-Everything is **off until you turn it on**. Nothing here talks to the network.
+ObservationPack and per-turn measurement are **on by default**; Action Fusion, the reducer and compaction planning are off. The plugin makes no direct network requests; enabling the reducer sends its log to the configured model through the host.
 
 ```
 fused_edit      mutate a file and run its validation command in one call
@@ -30,13 +30,13 @@ Context Compact（计划边界 + 压缩经济学）。
 
 关键点：
 
-- 四个机制**默认全部关闭**，每个工具在对应机制关闭时会明确拒绝并指出设置名；
+- 大结果打包与每回合测量默认开启；Action Fusion、日志归约与压缩规划默认关闭。已存档证据始终可回读；
 - 所有阈值、字节上限、id/哈希推导、收据字段、标记字符串、原因码与经济学常数
   都沿用上游，逐条对照见 `docs/PORT-NOTES.md`；
-- PI-Desktop 没有上下文投影钩子、插件也无法触发原生 `/compact`，所以触发点被
-  诚实地移到 agent（工具）与工作面板，并记录为「移植差异」而不是假装等价；
-- 仓库自带离线验收门 + 变异测试门（`bash scripts/verify.sh --mutations`），
-  在没有 app、没有网络、没有模型调用的情况下验证 110 项检查。
+- 自动上下文投影通过 agent extension 的 `context` 钩子运行；其他工具按需调用。
+  插件无法触发原生 `/compact`，压缩规划仍需用户手动确认；
+- 仓库自带离线验收门 + 变异测试门（`node scripts/verify.mjs --mutations`），
+  无需 app、网络或模型调用即可运行；本次 Windows 验证记录见下方链接。
 
 ## Requirements
 
@@ -55,7 +55,7 @@ saved here — that is the fastest way to try a change.
 **Install it the way a user would.** Package it, then install the package:
 
 ```bash
-bash scripts/verify.sh                              # optional: prove it first
+node scripts/verify.mjs                              # optional: prove it first
 ```
 
 Then ask the agent to run `PluginPack` on this directory (or run
@@ -88,6 +88,24 @@ adds **Action Fusion** on top: it also acts locally and spends no model call. Th
 reducer (`evidencePreservingReducer`) and the compaction economics
 (`onlineContextCompact`) stay off until you enable them deliberately, because those
 are the two that either spend a model call or change what the model is asked.
+
+## Windows commands and verification
+
+The fused tool runs commands directly in a child process: **cmd.exe on Windows**,
+and the login shell (`SHELL` or `/bin/sh`) on macOS/Linux. It does not use the
+Desktop's selected PowerShell. Use cmd syntax on Windows, or explicitly invoke
+PowerShell when required. The file guard confines the mutation, not arbitrary
+commands supplied to `then_run`; those commands have the plugin process's access.
+
+Use this tool for foreground validation, not long-lived background services. If a
+command exits leaving inherited output pipes open, the tool returns within its
+timeout plus a two-second shutdown grace and reports that background cleanup
+could not be confirmed; it does not claim those detached workers were killed.
+
+Run `node scripts/verify.mjs` for dependency-free syntax, unit and offline-host
+checks. Add `--mutations` for the mutation gate (Bash, tar, grep and sed;
+Git for Windows supplies these). CI runs both on Windows, macOS and Linux with
+Node 22 and 24. CI results are only available after publishing the branch.
 
 ## Settings
 
@@ -195,7 +213,7 @@ A large tool result leaves the context but never the machine.
     { "id": "port", "goal": "port the four mechanisms", "status": "completed" },
     { "id": "ship", "goal": "push the repo", "status": "in_progress" }
   ],
-  "progress": { "verification": ["bash scripts/verify.sh"] }
+  "progress": { "verification": ["node scripts/verify.mjs"] }
 }
 ```
 
@@ -241,17 +259,17 @@ text of nothing.
 ## Verification
 
 ```bash
-bash scripts/verify.sh              # syntax, manifest freshness, unit tests, offline gate
-bash scripts/verify.sh --mutations   # …plus the mutation gate
+node scripts/verify.mjs              # syntax, manifest freshness, unit tests, offline gate
+node scripts/verify.mjs --mutations   # …plus the mutation gate
 ```
 
 What that proves, and how:
 
 | Step | What it checks |
 | --- | --- |
-| Syntax | All 20 source files parse |
+| Syntax | All source files in the verification runner's scope parse |
 | Manifest freshness | `manifest.json` is byte-identical to what `lib/metadata.js` generates; the plugin also re-checks this at load time and refuses to load on drift |
-| Unit tests | 61 `node:test` assertions over config resolution, the observation store and paging, receipt validation, the economics decisions, plan parsing, and path containment |
+| Unit tests | `node:test` coverage of config resolution, storage and paging, receipt validation, economics, plan parsing, path containment, command lifecycle, and hook data-root isolation |
 | Offline gate | 64 checks that load the plugin against a **strict stub of the real host API** (an invented API throws), then exercise every tool, every refusal, the panel channels, the commands, and unload |
 | Hook-route harness | 10 checks that load `hooks/agent-hooks.js` the way the runtime does — a temporary installation root, synthetic message arrays — and assert the two full sends, the exact placeholder, the archive on disk, the ledger, both switches in both directions, the per-turn record, and the panel's own reading of the status file |
 | Mutation gate | Breaks one guarantee at a time (opt-in removed, manifest drift, a byte dropped from an archive, receipt verification skipped, an invented host API, the credential guard weakened, the fused-result guard disarmed, the session-project fallback disarmed, the hook route's two-full-send rule, packing switched off, the measurement switched off, the measurement ledger mixed into the observation ledger, the announced route forgotten by the panel, the status directory not created, a repeated packing overwriting one observation's saving) and requires the gate to fail **by name**: 15/15 caught |
@@ -261,8 +279,11 @@ that a disabled mechanism refuses, that a refused call changes nothing on disk, 
 fabricated quote never gets applied, a credential-bearing log never reaches a
 model, and no oversized tool result is ever returned as a quiet success.
 
-PI-Desktop's own packaging check (`PluginCheck`) passes on this directory and
-reports two warnings, both expected:
+The original port's packaging check (`PluginCheck`) reported two expected
+warnings. It has not been rerun for the Windows compatibility changes (the test
+conversation had no bound workspace); development-directory loading was used
+instead. See [Windows verification](docs/WINDOWS-VERIFICATION.md) and
+[live acceptance](docs/LIVE-ACCEPTANCE.md). The original warnings were:
 
 - *high-risk permissions require an explicit user grant* — `agent.tool.register`,
   `agent.prompt.inject` and `agent.extension` are what make the six tools, the

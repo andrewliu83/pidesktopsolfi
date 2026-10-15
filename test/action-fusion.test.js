@@ -18,7 +18,7 @@ const {
   symlinkSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
-const { join } = require("node:path");
+const { join, sep } = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const fusion = require("../lib/action-fusion.js");
@@ -63,7 +63,7 @@ test("a target has to stay inside the project root, and away from credentials", 
 
   const created = await fusion.resolveInsideRoot(root, "src/deep/new.txt");
   assert.equal(created.relativePath, "src/deep/new.txt");
-  assert.ok(created.absolutePath.startsWith(`${realRoot}/`), "a new file must still be resolved inside the root");
+  assert.ok(created.absolutePath.startsWith(realRoot + sep), "a new file must still be resolved inside the root");
 
   const refused = [
     ["/etc/passwd", /is absolute/],
@@ -79,7 +79,7 @@ test("a target has to stay inside the project root, and away from credentials", 
 });
 
 test("a symlink out of the project is refused even though the path looks relative", async () => {
-  symlinkSync(outside, join(root, "escape-link"));
+  symlinkSync(outside, join(root, "escape-link"), process.platform === "win32" ? "junction" : "dir");
   await assert.rejects(
     () => fusion.resolveInsideRoot(root, "escape-link/planted.txt"),
     /resolves outside the project root/,
@@ -88,7 +88,9 @@ test("a symlink out of the project is refused even though the path looks relativ
 
 test("the path forms upstream accepts are resolved, then pinned inside the root", async () => {
   const realRoot = realpathSync(root);
-  assert.notEqual(realRoot, root, "this test is only meaningful when the temp root is a symlink");
+  // Exercise a real alias on every platform, not just macOS's /var -> /private/var.
+  const alias = join(outside, "project-alias");
+  symlinkSync(root, alias, process.platform === "win32" ? "junction" : "dir");
 
   assert.equal((await fusion.resolveInsideRoot(root, "@src/app.js")).relativePath, "src/app.js");
   assert.equal((await fusion.resolveInsideRoot(root, "@./src/./app.js")).relativePath, "src/app.js");
@@ -98,10 +100,10 @@ test("the path forms upstream accepts are resolved, then pinned inside the root"
     "the unicode spaces a terminal inserts must be normalised",
   );
 
-  for (const base of [root, realRoot]) {
+  for (const base of [root, realRoot, alias]) {
     const url = pathToFileURL(join(base, "src", "from-url.txt")).href;
-    assert.equal((await fusion.resolveInsideRoot(root, url)).relativePath, "src/from-url.txt");
-    assert.equal((await fusion.resolveInsideRoot(root, `@${url}`)).relativePath, "src/from-url.txt");
+    assert.equal((await fusion.resolveInsideRoot(base, url)).relativePath, "src/from-url.txt");
+    assert.equal((await fusion.resolveInsideRoot(base, `@${url}`)).relativePath, "src/from-url.txt");
   }
 
   const refused = [
